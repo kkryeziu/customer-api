@@ -1,4 +1,3 @@
-
 package customer_api.service;
 
 import customer_api.exception.CustomerDuplicateException;
@@ -8,56 +7,66 @@ import customer_api.model.request.CustomerUpdateRequest;
 import customer_api.model.response.CustomerResponse;
 import customer_api.model.response.CustomerUpdateResponse;
 import customer_api.repository.CustomerRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
 class CustomerServiceTest {
 
-    @Mock
-    private CustomerRepository customerRepository;
-
-    @InjectMocks
+    @Autowired
     private CustomerService customerService;
 
+    @Autowired
+    private CacheManager cacheManager;
+
+    @MockitoBean
+    private CustomerRepository customerRepository;
+
+    @BeforeEach
+    void clearCache() {
+        cacheManager.getCache("customer").clear();
+    }
+
     @Test
-     void shouldReturnCustomerWhenIdExists() {
+    void shouldReturnCustomerWhenIdExists() {
 
         Customer customer = new Customer(
                 1L,
-                "kejsi",
-                "kejsi@gmail.com",
-                "kejsi.jpg"
+                "Joni",
+                "joni@gmail.com",
+                "joni.jpg"
         );
 
         when(customerRepository.findById(1L))
                 .thenReturn(Optional.of(customer));
 
-        CustomerResponse result = customerService.getCustomerById(1L);
+        CustomerResponse result =
+                customerService.getCustomerById(1L);
 
         assertEquals(1L, result.getId());
-        assertEquals("kejsi", result.getName());
-        assertEquals("kejsi@gmail.com", result.getEmail());
-        assertEquals("kejsi.jpg", result.getPhoto());
+        assertEquals("Joni", result.getName());
+        assertEquals("joni@gmail.com", result.getEmail());
+        assertEquals("joni.jpg", result.getPhoto());
     }
 
     @Test
     void shouldThrowExceptionWhenCustomerDoesNotExist() {
 
-        when(customerRepository.findById(999L))
+        when(customerRepository.findById(1L))
                 .thenReturn(Optional.empty());
 
         assertThrows(
                 CustomerNotFoundException.class,
-                () -> customerService.getCustomerById(999L)
+                () -> customerService.getCustomerById(1L)
         );
     }
 
@@ -163,6 +172,73 @@ class CustomerServiceTest {
 
         verify(customerRepository, never()).save(customer);
     }
+
+    @Test
+    void shouldReturnCustomerFromCacheOnSecondRequest() {
+
+        Customer customer = new Customer(
+                1L,
+                "Joni",
+                "joni@gmail.com",
+                "joni.jpg"
+        );
+
+        when(customerRepository.findById(1L))
+                .thenReturn(Optional.of(customer));
+
+        CustomerResponse firstResult =
+                customerService.getCustomerById(1L);
+
+        CustomerResponse secondResult =
+                customerService.getCustomerById(1L);
+
+        assertEquals(firstResult.getId(), secondResult.getId());
+        assertEquals(firstResult.getName(), secondResult.getName());
+        assertEquals(firstResult.getEmail(), secondResult.getEmail());
+        assertEquals(firstResult.getPhoto(), secondResult.getPhoto());
+
+        verify(customerRepository, times(1))
+                .findById(1L);
+    }
+
+    @Test
+    void shouldEvictCacheWhenCustomerIsUpdated() {
+
+        Customer customer = new Customer(
+                1L,
+                "Joni",
+                "joni@gmail.com",
+                "joni.jpg"
+        );
+
+        when(customerRepository.findById(1L))
+                .thenReturn(Optional.of(customer));
+
+        CustomerResponse firstResult =
+                customerService.getCustomerById(1L);
+
+        assertEquals("Joni", firstResult.getName());
+
+        CustomerUpdateRequest request = new CustomerUpdateRequest();
+        request.setName("Joni New");
+        request.setEmail("joni@gmail.com");
+        request.setPhoto("joni.jpg");
+
+        when(customerRepository.findDuplicateCustomer(
+                1L,
+                request.getName(),
+                request.getEmail(),
+                request.getPhoto()
+        )).thenReturn(Optional.empty());
+
+        customerService.updateCustomer(1L, request);
+
+        CustomerResponse secondResult =
+                customerService.getCustomerById(1L);
+
+        assertEquals("Joni New", secondResult.getName());
+
+        verify(customerRepository, times(3))
+                .findById(1L);
+    }
 }
-
-
