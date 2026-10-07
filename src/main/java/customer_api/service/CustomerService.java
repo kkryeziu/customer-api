@@ -7,6 +7,8 @@ import customer_api.model.response.CustomerResponse;
 import customer_api.model.response.CustomerUpdateResponse;
 import customer_api.model.request.CustomerUpdateRequest;
 import customer_api.repository.CustomerRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,7 @@ import java.util.Objects;
 public class CustomerService {
     private final CustomerRepository customerRepository;
 
+    @Cacheable(value = "customer", key = "#id")
     public CustomerResponse getCustomerById(Long id) {
 
         Customer customer = customerRepository.findById(id)
@@ -28,6 +31,7 @@ public class CustomerService {
                 customer.getPhoto());
     }
 
+    @CacheEvict(value = "customer", key = "#id")
     public CustomerUpdateResponse updateCustomer(
             Long id,
             CustomerUpdateRequest request) {
